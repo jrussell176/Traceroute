@@ -143,10 +143,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Traceroute.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Checksum.h" />
     <ClInclude Include="Header.h" />
     <ClInclude Include="NetworkStructs.h" />
+    <ClInclude Include="PreciseCounter.h" />
+    <ClInclude Include="Traceroute.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,6 +1,6 @@
 #pragma once
 
-/* Modified header file from HW3*/
+/* Modified header file from HW3 */
 #include <stdlib.h>
 #include <algorithm>
 #include <string>

@@ -1,5 +1,9 @@
 #pragma once
-#include "Checksum.h"
+#include "PreciseCounter.h"
+
+/*
+* File taken from CSCE 463 HW instructions
+*/
 
 #define IP_HDR_SIZE 20 /* RFC 791 */
 #define ICMP_HDR_SIZE 8 /* RFC 792 */
