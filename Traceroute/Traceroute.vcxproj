@@ -148,6 +148,7 @@
   <ItemGroup>
     <ClInclude Include="Checksum.h" />
     <ClInclude Include="Header.h" />
+    <ClInclude Include="ICMPResponseInfo.h" />
     <ClInclude Include="NetworkStructs.h" />
     <ClInclude Include="PreciseCounter.h" />
     <ClInclude Include="Traceroute.h" />

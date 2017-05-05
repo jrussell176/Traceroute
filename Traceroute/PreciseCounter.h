@@ -12,8 +12,15 @@ class PreciseCounter {
 
 private:
 	double PCFreq;
-	__int64 CounterStart;public:	PreciseCounter() {		double PCFreq = 0.0;
-		__int64 CounterStart = 0;	}	void startCounter(){
+	__int64 CounterStart;
+
+public:
+	PreciseCounter() {
+		double PCFreq = 0.0;
+		__int64 CounterStart = 0;
+	}
+
+	void startCounter(){
 		LARGE_INTEGER li;
 		if (!QueryPerformanceFrequency(&li)) {
 			printf("QueryPerformanceFrequency failed!\n");
@@ -23,7 +30,8 @@ private:
 
 		QueryPerformanceCounter(&li);
 		CounterStart = li.QuadPart;
-	}
+	}
+
 	double getCounter(){
 		LARGE_INTEGER li;
 		QueryPerformanceCounter(&li);
