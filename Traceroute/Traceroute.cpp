@@ -4,21 +4,53 @@ Traceroute::Traceroute() {
 	id = GetCurrentProcessId();
 	sin_size = sizeof(struct sockaddr_in);
 
-	for (int i = 0; i < info_arr_size; i++) {
+	for (int i = 0; i < MAX_HOPS; i++) {
 		info_arr[i] = NULL;
 	}
 
 	if (initializeSocket() != STATUS_OK) {
 		exit(-1);
 	}
+
+
+
 }
+
+DWORD Traceroute::startThreads() {
+
+	
+	
+	
+	for (int i = 0; i < MAX_HOPS; i++) {
+
+		ThreadData *threadData = new ThreadData();
+
+		threadData->mutex;
+		threadData->traceroute_completed = false;
+		threadData->host_name = NULL;
+		threadData->ip_to_lookup = NULL;
+
+		data_arr[i] = threadData;
+
+		handles[i] = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)reverseDNSLookupFunction, data_arr[i], 0, NULL);
+	}
+	
+
+	return STATUS_OK;
+}
+
 
 DWORD Traceroute::trace(char *host_or_ip) {
 	
 	DWORD IP = inet_addr(host_or_ip);
-	sendICMPPacket(IP, 2);
+	
+	//Send the initial set of packets
+	for (int i = 0; i < MAX_HOPS; i++) {
+		sendICMPPacket(IP,i);
+	}
 	printf("Sent Packet\n");
-	recvICMPPacket();
+	recvICMPPackets();
+	printResults();
 	return STATUS_OK;
 }
 
@@ -97,7 +129,7 @@ DWORD Traceroute::sendICMPPacket(DWORD IP, int ttl) {
 * With modifications
 */
 
-DWORD Traceroute::recvICMPPacket() {
+DWORD Traceroute::recvICMPPackets() {
 	u_char rec_buf[MAX_REPLY_SIZE]; /* this buffer starts with an IP header */
 	IPHeader *router_ip_hdr = (IPHeader *)rec_buf;
 	ICMPHeader *router_icmp_hdr = (ICMPHeader *)(router_ip_hdr + 1);
@@ -115,52 +147,60 @@ DWORD Traceroute::recvICMPPacket() {
 	}
 	struct timeval timeout;
 	timeout.tv_sec = 0;
-	timeout.tv_usec = 1000000;
-	int available = select(0, &fd, NULL, NULL, &timeout);
+	timeout.tv_usec = 100000;
+
+	int available = 0;
 	struct sockaddr_in response;
-	int response_size = sizeof(response);
+	int response_size = 0;
 	int recv_pkt_size = 0;
 
-	if (available == SOCKET_ERROR) {
-		printf("select() error occurred\n");
-		return FAILED_RECV;
-	}
-	else if (available == 0) {
-		printf("select() timed out\n");
-		return FAILED_RECV;
-	}
-	else if (available > 0) {
-		if ((recv_pkt_size = recvfrom(sock, (char*)rec_buf, MAX_REPLY_SIZE, 0,(struct sockaddr*)&response, &response_size)) == SOCKET_ERROR) {
-			printf("Error while receiving: %d", WSAGetLastError());
+	//TODO: handle for different ICMP codes
+	while (true) {
+
+		available = select(0, &fd, NULL, NULL, &timeout);
+		response_size = sizeof(response);
+
+		if (available == SOCKET_ERROR) {
+			printf("select() error occurred\n");
 			return FAILED_RECV;
 		}
-		printf("Recv'ed the packet\n");
-	}
-	else {
-		printf("Unknown error in select()\n");
-	}
-	
+		else if (available == 0) {
+			printf("select() timed out\n");
+			break;
+			return FAILED_RECV;
+		}
+		else if (available > 0) {
+			if ((recv_pkt_size = recvfrom(sock, (char*)rec_buf, MAX_REPLY_SIZE, 0, (struct sockaddr*)&response, &response_size)) == SOCKET_ERROR) {
+				printf("Error while receiving: %d\n", WSAGetLastError());
+				return FAILED_RECV;
+			}
+			printf("Recv'ed the packet\n");
+		}
+		else {
+			printf("Unknown error in select()\n");
+		}
 
+		//...
+		// check if this is TTL_expired; make sure packet size >= 56 bytes
+		if (recv_pkt_size < 56) {
+			printf("Received too small of a packet\n");
+			return FAILED_RECV;
+		}
 
-	//...
-	// check if this is TTL_expired; make sure packet size >= 56 bytes
-	if (recv_pkt_size < 56) {
-		printf("Received too small of a packet\n");
-		return FAILED_RECV;
-	}
-
-	printf("router_icmp_hrd->code: %s\n", router_icmp_hdr->code);
-	//TODO Figure out correct code to use
-	if (router_icmp_hdr->type == ICMP_TTL_EXPIRE && router_icmp_hdr->code == NULL)
-	{
-		if (orig_ip_hdr->proto == IPPROTO_ICMP)
+		//printf("router_icmp_hrd->code: %s\n", router_icmp_hdr->code);
+		//TODO Figure out correct code to use
+		if (router_icmp_hdr->type == ICMP_TTL_EXPIRE /*&& router_icmp_hdr->code == NULL*/)
 		{
-			// check if process ID matches
-			if (orig_icmp_hdr->id == id)
+			if (orig_ip_hdr->proto == IPPROTO_ICMP)
 			{
-				// take router_ip_hdr->source_ip and
-				// initiate a DNS lookup
-				dnsLookUp(router_ip_hdr->source_ip);
+				// check if process ID matches
+				if (orig_icmp_hdr->id == id)
+				{
+					// take router_ip_hdr->source_ip and
+					// initiate a DNS lookup
+					dnsLookUp(router_ip_hdr->source_ip, orig_icmp_hdr->seq);
+					//inet_ntop();
+				}
 			}
 		}
 	}
@@ -169,8 +209,57 @@ DWORD Traceroute::recvICMPPacket() {
 	return STATUS_OK;
 }
 
-DWORD Traceroute::dnsLookUp(u_long source_ip) {
+DWORD Traceroute::dnsLookUp(u_long source_ip,u_short seq) {
 
-	printf("DNS Lookup");
+	printf("DNS Lookup\n");
+	ICMPResponseInfo *new_info = new ICMPResponseInfo();
+	
+	new_info->success = true;
+	new_info->ip = source_ip;
+	new_info->number_of_attempts++;
+	new_info->time = 0;
+	new_info->host_name = "hostname.com";
+	
+	/*
+	* Modified solution from http://stackoverflow.com/questions/5328070/how-to-convert-string-to-ip-address-and-vice-versa
+	*/
+	//Convert the u_long ip into a string
+	struct in_addr temp_addr;
+	temp_addr.S_un.S_addr = source_ip;
+
+	char *ip_str = inet_ntoa(temp_addr);
+	
+	WaitForSingleObject(data_arr[seq]->mutex, INFINITE);
+	data_arr[seq]->ip_to_lookup = ip_str;
+	ReleaseMutex(data_arr[seq]->mutex);
+
+	bool cont = true;
+	while (true) {
+		WaitForSingleObject(data_arr[seq]->mutex, INFINITE);
+		if (data_arr[seq]->host_name != NULL) {
+			new_info->host_name = data_arr[seq]->host_name;
+			cont = false;
+		}
+		ReleaseMutex(data_arr[seq]->mutex);
+	}
+
+	info_arr[seq] = new_info;
+
 	return STATUS_OK;
+}
+
+//TODO wait for all the threads to close
+void Traceroute::printResults() {
+
+	//TODO: Limit this to end on the last ICMP packet
+	for (int i = 0; i < MAX_HOPS; i++) {
+		if (info_arr[i] == NULL) {
+			printf("%d *\n",i);
+		}
+		else {
+			printf("%d %s (%d) %.3f ms (%d)\n", i, info_arr[i]->host_name, info_arr[i]->ip,info_arr[i]->time,info_arr[i]->number_of_attempts);
+		}
+	}
+
+	return;
 }

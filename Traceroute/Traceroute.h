@@ -12,14 +12,19 @@
 //Constant Values
 #define MAX_PROBES 3
 #define INTIAL_PROBE_TIMEOUT 500
+#define MAX_HOPS 30
 
 class Traceroute {
 public:
 	Traceroute();
 	DWORD trace(char *host_or_ip);
 private:
-	const int info_arr_size = 30;
-	ICMPResponseInfo *info_arr[info_arr_size];
+	DWORD startThreads();
+
+	ICMPResponseInfo *info_arr[MAX_HOPS];
+
+	HANDLE handles[MAX_HOPS];
+	ThreadData *data_arr[MAX_HOPS];
 
 	SOCKET sock;
 
@@ -31,8 +36,10 @@ private:
 	DWORD initializeSocket();
 
 	DWORD sendICMPPacket(DWORD IP, int ttl);
-	DWORD recvICMPPacket();
+	DWORD recvICMPPackets();
 
-	DWORD dnsLookUp(u_long source_ip);
+	DWORD dnsLookUp(u_long source_ip, u_short seq);
+
+	void printResults();
 
 };
