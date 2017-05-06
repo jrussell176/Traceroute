@@ -30,9 +30,9 @@ DWORD Traceroute::startThreads() {
 		threadData->host_name = NULL;
 		threadData->ip_to_lookup = NULL;
 
-		data_arr[i] = threadData;
+		thread_data_arr[i] = threadData;
 
-		handles[i] = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)reverseDNSLookupFunction, data_arr[i], 0, NULL);
+		handles[i] = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)reverseDNSLookupFunction, thread_data_arr[i], 0, NULL);
 	}
 	
 
@@ -43,6 +43,7 @@ DWORD Traceroute::startThreads() {
 DWORD Traceroute::trace(char *host_or_ip) {
 	
 	DWORD IP = inet_addr(host_or_ip);
+	startThreads();
 	
 	//Send the initial set of packets
 	for (int i = 0; i < MAX_HOPS; i++) {
@@ -50,6 +51,8 @@ DWORD Traceroute::trace(char *host_or_ip) {
 	}
 	printf("Sent Packet\n");
 	recvICMPPackets();
+	closeAllThreads();
+	retrieveHostNames();
 	printResults();
 	return STATUS_OK;
 }
@@ -155,70 +158,74 @@ DWORD Traceroute::recvICMPPackets() {
 	int recv_pkt_size = 0;
 
 	//TODO: handle for different ICMP codes
+	bool inspect_packet = true;
 	while (true) {
+		inspect_packet = true;
 
 		available = select(0, &fd, NULL, NULL, &timeout);
 		response_size = sizeof(response);
 
 		if (available == SOCKET_ERROR) {
 			printf("select() error occurred\n");
-			return FAILED_RECV;
+			inspect_packet = false;
 		}
 		else if (available == 0) {
 			printf("select() timed out\n");
 			break;
-			return FAILED_RECV;
 		}
 		else if (available > 0) {
 			if ((recv_pkt_size = recvfrom(sock, (char*)rec_buf, MAX_REPLY_SIZE, 0, (struct sockaddr*)&response, &response_size)) == SOCKET_ERROR) {
 				printf("Error while receiving: %d\n", WSAGetLastError());
-				return FAILED_RECV;
+				inspect_packet = false;
 			}
 			printf("Recv'ed the packet\n");
 		}
 		else {
 			printf("Unknown error in select()\n");
+			inspect_packet = false;
 		}
 
 		//...
 		// check if this is TTL_expired; make sure packet size >= 56 bytes
 		if (recv_pkt_size < 56) {
 			printf("Received too small of a packet\n");
-			return FAILED_RECV;
+			inspect_packet = false;
 		}
 
 		//printf("router_icmp_hrd->code: %s\n", router_icmp_hdr->code);
 		//TODO Figure out correct code to use
-		if (router_icmp_hdr->type == ICMP_TTL_EXPIRE /*&& router_icmp_hdr->code == NULL*/)
-		{
-			if (orig_ip_hdr->proto == IPPROTO_ICMP)
+		//TODO end when we've reached the destination
+		if (inspect_packet) {
+			if (router_icmp_hdr->type == ICMP_TTL_EXPIRE /*&& router_icmp_hdr->code == NULL*/)
 			{
-				// check if process ID matches
-				if (orig_icmp_hdr->id == id)
+				if (orig_ip_hdr->proto == IPPROTO_ICMP)
 				{
-					// take router_ip_hdr->source_ip and
-					// initiate a DNS lookup
-					dnsLookUp(router_ip_hdr->source_ip, orig_icmp_hdr->seq);
-					//inet_ntop();
+					// check if process ID matches
+					if (orig_icmp_hdr->id == id)
+					{
+						// take router_ip_hdr->source_ip and
+						// initiate a DNS lookup
+						dnsLookUp(router_ip_hdr->source_ip, orig_icmp_hdr->seq);
+						//inet_ntop();
+					}
 				}
 			}
 		}
 	}
-
-
 	return STATUS_OK;
 }
 
 DWORD Traceroute::dnsLookUp(u_long source_ip,u_short seq) {
 
-	printf("DNS Lookup\n");
+	//Create the info for the response
 	ICMPResponseInfo *new_info = new ICMPResponseInfo();
-	
 	new_info->success = true;
 	new_info->ip = source_ip;
 	new_info->number_of_attempts++;
 	new_info->time = 0;
 	new_info->host_name = "hostname.com";
+
+	info_arr[seq] = new_info;
 	
 	/*
 	* Modified solution from http://stackoverflow.com/questions/5328070/how-to-convert-string-to-ip-address-and-vice-versa
@@ -229,23 +236,56 @@ DWORD Traceroute::dnsLookUp(u_long source_ip,u_short seq) {
 
 	char *ip_str = inet_ntoa(temp_addr);
 	
-	WaitForSingleObject(data_arr[seq]->mutex, INFINITE);
-	data_arr[seq]->ip_to_lookup = ip_str;
-	ReleaseMutex(data_arr[seq]->mutex);
+	//Start the lookup for the thread
+	WaitForSingleObject(thread_data_arr[seq]->mutex, INFINITE);
+	thread_data_arr[seq]->ip_to_lookup = ip_str;
+	ReleaseMutex(thread_data_arr[seq]->mutex);
 
+	//Unnecessary, the thread will modifiy the host name for us
+	/*
 	bool cont = true;
 	while (true) {
-		WaitForSingleObject(data_arr[seq]->mutex, INFINITE);
-		if (data_arr[seq]->host_name != NULL) {
-			new_info->host_name = data_arr[seq]->host_name;
+		WaitForSingleObject(thread_data_arr[seq]->mutex, INFINITE);
+		if (thread_data_arr[seq]->host_name != NULL) {
+			new_info->host_name = thread_data_arr[seq]->host_name;
 			cont = false;
 		}
-		ReleaseMutex(data_arr[seq]->mutex);
+		ReleaseMutex(thread_data_arr[seq]->mutex);
 	}
+	*/
 
-	info_arr[seq] = new_info;
+	
 
 	return STATUS_OK;
+}
+
+DWORD Traceroute::closeAllThreads() {
+
+	//Singal all the threads to close
+	for (int i = 0; i < MAX_HOPS; i++) {
+		WaitForSingleObject(thread_data_arr[i]->mutex, INFINITE);
+		thread_data_arr[i]->traceroute_completed = true;
+		ReleaseMutex(thread_data_arr[i]->mutex);
+	}
+
+	for (int i = 0; i < MAX_HOPS; i++)
+	{
+		WaitForSingleObject(handles[i], INFINITE);
+		CloseHandle(handles[i]);
+	}
+
+	return STATUS_OK;
+
+}
+
+void Traceroute::retrieveHostNames() {
+	for (int i = 0; i < MAX_HOPS; i++) {
+		WaitForSingleObject(thread_data_arr[i]->mutex, INFINITE);
+		if (info_arr[i] != NULL) {
+			info_arr[i]->host_name = thread_data_arr[i]->host_name;
+		}
+		ReleaseMutex(thread_data_arr[i]->mutex);
+	}
 }
 
 //TODO wait for all the threads to close

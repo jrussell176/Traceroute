@@ -24,7 +24,7 @@ private:
 	ICMPResponseInfo *info_arr[MAX_HOPS];
 
 	HANDLE handles[MAX_HOPS];
-	ThreadData *data_arr[MAX_HOPS];
+	ThreadData *thread_data_arr[MAX_HOPS];
 
 	SOCKET sock;
 
@@ -39,6 +39,10 @@ private:
 	DWORD recvICMPPackets();
 
 	DWORD dnsLookUp(u_long source_ip, u_short seq);
+
+	DWORD closeAllThreads(); //Closes all the threads that are still open
+
+	void retrieveHostNames();
 
 	void printResults();
 
