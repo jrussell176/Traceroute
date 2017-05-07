@@ -36,7 +36,11 @@ private:
 	DWORD initializeSocket();
 
 	DWORD sendICMPPacket(DWORD IP, int ttl);
+
+	DWORD sendFirstWaveOfPackets(DWORD IP);
 	DWORD recvICMPPackets();
+
+	DWORD handleRetx();
 
 	DWORD dnsLookUp(u_long source_ip, u_short seq);
 

@@ -25,14 +25,14 @@ DWORD Traceroute::startThreads() {
 
 		ThreadData *threadData = new ThreadData();
 
-		threadData->mutex;
+		threadData->mutex = CreateMutex(NULL,0,NULL);
 		threadData->traceroute_completed = false;
-		threadData->host_name = NULL;
-		threadData->ip_to_lookup = NULL;
+		threadData->host_name = "";
+		threadData->ip_to_lookup = "";
 
 		thread_data_arr[i] = threadData;
 
-		handles[i] = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)reverseDNSLookupFunction, thread_data_arr[i], 0, NULL);
+		handles[i] = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)reverseDNSLookupFunction, threadData, 0, NULL);
 	}
 	
 
@@ -44,12 +44,7 @@ DWORD Traceroute::trace(char *host_or_ip) {
 	
 	DWORD IP = inet_addr(host_or_ip);
 	startThreads();
-	
-	//Send the initial set of packets
-	for (int i = 0; i < MAX_HOPS; i++) {
-		sendICMPPacket(IP,i);
-	}
-	printf("Sent Packet\n");
+	sendFirstWaveOfPackets(IP);
 	recvICMPPackets();
 	closeAllThreads();
 	retrieveHostNames();
@@ -126,6 +121,15 @@ DWORD Traceroute::sendICMPPacket(DWORD IP, int ttl) {
 
 	return STATUS_OK;
 }
+
+DWORD Traceroute::sendFirstWaveOfPackets(DWORD IP) {
+	//Send the initial set of packets
+	for (int i = 0; i < MAX_HOPS; i++) {
+		sendICMPPacket(IP, i);
+	}
+	return STATUS_OK;
+}
+
 
 /*
 * Taken from HW instructions
@@ -215,6 +219,10 @@ DWORD Traceroute::recvICMPPackets() {
 	return STATUS_OK;
 }
 
+DWORD Traceroute::handleRetx() {
+	return STATUS_OK;
+}
+
 DWORD Traceroute::dnsLookUp(u_long source_ip,u_short seq) {
 
 	//Create the info for the response
@@ -235,6 +243,8 @@ DWORD Traceroute::dnsLookUp(u_long source_ip,u_short seq) {
 	temp_addr.S_un.S_addr = source_ip;
 
 	char *ip_str = inet_ntoa(temp_addr);
+
+
 	
 	//Start the lookup for the thread
 	WaitForSingleObject(thread_data_arr[seq]->mutex, INFINITE);
@@ -253,8 +263,6 @@ DWORD Traceroute::dnsLookUp(u_long source_ip,u_short seq) {
 		ReleaseMutex(thread_data_arr[seq]->mutex);
 	}
 	*/
-
-	
 
 	return STATUS_OK;
 }
@@ -290,14 +298,19 @@ void Traceroute::retrieveHostNames() {
 
 //TODO wait for all the threads to close
 void Traceroute::printResults() {
-
+	char str[INET_ADDRSTRLEN];
 	//TODO: Limit this to end on the last ICMP packet
 	for (int i = 0; i < MAX_HOPS; i++) {
 		if (info_arr[i] == NULL) {
 			printf("%d *\n",i);
 		}
 		else {
-			printf("%d %s (%d) %.3f ms (%d)\n", i, info_arr[i]->host_name, info_arr[i]->ip,info_arr[i]->time,info_arr[i]->number_of_attempts);
+			/*
+			* Modified solution from http://stackoverflow.com/questions/5328070/how-to-convert-string-to-ip-address-and-vice-versa
+			*/
+			inet_ntop(AF_INET, &info_arr[i]->ip, str, INET_ADDRSTRLEN);
+			
+			printf("%d %s (%s) %.3f ms (%d)\n", i, info_arr[i]->host_name.c_str(), str,info_arr[i]->time,info_arr[i]->number_of_attempts);
 		}
 	}
 
