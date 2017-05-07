@@ -191,16 +191,18 @@ DWORD Traceroute::recvICMPPackets() {
 
 		//...
 		// check if this is TTL_expired; make sure packet size >= 56 bytes
+		//TODO: Figure out why these replies are so small
 		if (recv_pkt_size < 56) {
-			printf("Received too small of a packet\n");
-			inspect_packet = false;
+			printf("Received too small of a packet: %d\n",recv_pkt_size);
+			//inspect_packet = false;
 		}
 
 		//printf("router_icmp_hrd->code: %s\n", router_icmp_hdr->code);
 		//TODO Figure out correct code to use
 		//TODO end when we've reached the destination
+		//TODO figure out why inspecting the code requires a to small of packet
 		if (inspect_packet) {
-			if (router_icmp_hdr->type == ICMP_TTL_EXPIRE /*&& router_icmp_hdr->code == NULL*/)
+			if (router_icmp_hdr->type == ICMP_TTL_EXPIRE /*&& router_icmp_hdr->code == '0'*/) //TTL expired response
 			{
 				if (orig_ip_hdr->proto == IPPROTO_ICMP)
 				{
@@ -214,12 +216,74 @@ DWORD Traceroute::recvICMPPackets() {
 					}
 				}
 			}
+			else if (router_icmp_hdr->type == ICMP_ECHO_REPLY /*&& router_icmp_hdr->code == '0'*/) //Echo Reply response
+			{
+				printf("\n\nGot the final reply\n\n");
+				if (orig_ip_hdr->proto == IPPROTO_ICMP)
+				{
+					// check if process ID matches
+					if (orig_icmp_hdr->id == id)
+					{
+						// take router_ip_hdr->source_ip and
+						// initiate a DNS lookup
+						dnsLookUp(router_ip_hdr->source_ip, orig_icmp_hdr->seq);
+						info_arr[orig_icmp_hdr->seq]->final_destination = true;
+						//inet_ntop();
+					}
+				}
+			}
+			/*
+			else {
+				if (orig_ip_hdr->proto == IPPROTO_ICMP)
+				{
+					// check if process ID matches
+					if (orig_icmp_hdr->id == id)
+					{
+						// initiate a DNS lookup
+						dnsLookUp(router_ip_hdr->source_ip, orig_icmp_hdr->seq);
+						info_arr[orig_icmp_hdr->seq]->unexpected_code = true;
+
+						//Add the error message
+						char error_message[25];
+						sprintf(error_message, "Unexpected type/code: Type: %c Code: %c", router_icmp_hdr->type, router_icmp_hdr->code);
+						info_arr[orig_icmp_hdr->seq]->error_message = error_message;
+					}
+				}
+			}
+			*/
 		}
 	}
 	return STATUS_OK;
 }
 
 DWORD Traceroute::handleRetx() {
+
+	/*
+	* Based off pseudo code from Piazza Reponse: https://piazza.com/class/iy0nxnbxdsf6m9?cid=210
+	*/
+	/*
+	while (not done)
+	{
+		HANDLE arr[] = { DNSsocket, ICMPsocket };
+		// peak at the heap containing future retx instances of all pending hops
+		timeout = heap.root().timestamp - cur_time;   // make sure timeout > 0; otherwise set to 0
+
+		int ret = WaitForMultipleObjects(2, arr, false, timeout);
+		switch (ret)
+		{
+			case ICMP: mark this hop as done; send DNS packet with corresponding query
+			case timeout: item = heap.pop();
+
+			if (item.rextCounter++ < 3)
+			{
+				retx packet for item.hop;
+				item.timestamp = cur_time + RTO;
+				heap.insert(item);
+			}
+		}
+	}
+	*/
+
 	return STATUS_OK;
 }
 
@@ -310,7 +374,17 @@ void Traceroute::printResults() {
 			*/
 			inet_ntop(AF_INET, &info_arr[i]->ip, str, INET_ADDRSTRLEN);
 			
-			printf("%d %s (%s) %.3f ms (%d)\n", i, info_arr[i]->host_name.c_str(), str,info_arr[i]->time,info_arr[i]->number_of_attempts);
+			if (!info_arr[i]->unexpected_code) {
+				printf("%d %s (%s) %.3f ms (%d)\n", i, info_arr[i]->host_name.c_str(), str, info_arr[i]->time, info_arr[i]->number_of_attempts);
+			}
+			else {
+				printf("%d %s (%s) %.3f ms (%d) \n", i, info_arr[i]->host_name.c_str(), str, info_arr[i]->time, info_arr[i]->number_of_attempts);
+			}
+			
+			//If this was the last one break
+			if (info_arr[i]->final_destination) {
+				break;
+			}
 		}
 	}
 

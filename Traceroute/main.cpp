@@ -15,6 +15,8 @@ int main() {
 	Traceroute tr = Traceroute();
 
 	DWORD err;
+
+	//if ((err = tr.trace("151.101.1.67")) != STATUS_OK) {
 	if ((err = tr.trace("172.217.11.174")) != STATUS_OK) {
 		printf("Error: %s\n",err);
 	}
