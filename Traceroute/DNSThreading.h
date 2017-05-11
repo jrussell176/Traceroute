@@ -48,7 +48,7 @@ inline void WINAPI reverseDNSLookupFunction(LPVOID lpParam) {
 					threadData->host_name = he->h_name;
 				}
 
-				printf("%s --> %s\n", threadData->ip_to_lookup.c_str(), threadData->host_name);
+				//printf("%s --> %s\n", threadData->ip_to_lookup.c_str(), threadData->host_name);
 			}
 		}
 
@@ -60,6 +60,6 @@ inline void WINAPI reverseDNSLookupFunction(LPVOID lpParam) {
 		ReleaseMutex(threadData->mutex);
 	}
 
-	printf("Exiting thread\n");
+	//printf("Exiting thread\n");
 	return;
 }

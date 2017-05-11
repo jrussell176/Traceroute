@@ -7,7 +7,9 @@ public:
 		number_of_attempts = 0;
 		ip = NULL;
 		host_name = "";
-		time = 0;
+		time_sent = 0;
+		RTT = 0;
+		RTO = 0;
 		success = false;
 		final_destination = false;
 		unexpected_code = false;
@@ -17,7 +19,9 @@ public:
 	int number_of_attempts;
 	u_long ip;
 	std::string host_name;
-	float time;
+	double time_sent;
+	double RTT;
+	int RTO;
 	boolean success; //Did it succeed?
 	boolean final_destination; //Is this the final destination?
 	
